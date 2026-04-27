@@ -10,6 +10,9 @@
 		"README.md"
 	],
 	"type": "module",
+	"repository": {
+		"url": "https://github.com/dongnez/later-queue"
+	},
 	"scripts": {
 		"build": "tsup",
 		"lint": "biome lint ./src",
