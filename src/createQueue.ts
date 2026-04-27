@@ -49,7 +49,7 @@ export interface QueuedTask {
  *                        Prevents excessive writes during rapid add() calls.
  */
 export interface CreateQueueOptions<
-	THandlers extends Record<string, (...args: any[]) => Promise<unknown>>,
+	THandlers extends Record<string, (...args: any[]) => unknown>,
 > {
 	storage: QueueStorage;
 	handlers: THandlers;
@@ -60,12 +60,12 @@ export interface CreateQueueOptions<
 // ─── Type helpers ─────────────────────────────────────────────────────────────
 
 type HandlerParams<
-	THandlers extends Record<string, (...args: any[]) => Promise<unknown>>,
+	THandlers extends Record<string, (...args: any[]) => unknown>,
 	H extends keyof THandlers,
 > = Parameters<THandlers[H]>;
 
 export interface Queue<
-	THandlers extends Record<string, (...args: any[]) => Promise<unknown>>,
+	THandlers extends Record<string, (...args: any[]) => unknown>,
 > {
 	add: <H extends keyof THandlers & string>(
 		props: AddTaskOptions<THandlers, H>,
@@ -89,7 +89,7 @@ export interface Queue<
  *                        If false, the handler is awaited before processing the next task.
  */
 export interface AddTaskOptions<
-	THandlers extends Record<string, (...args: any[]) => Promise<unknown>>,
+	THandlers extends Record<string, (...args: any[]) => unknown>,
 	H extends keyof THandlers & string,
 > {
 	handler: H;
@@ -123,7 +123,7 @@ const INFINITE_RETRIES = -1;
  * ```
  */
 export function createQueue<
-	THandlers extends Record<string, (...args: any[]) => Promise<unknown>>,
+	THandlers extends Record<string, (...args: any[]) => unknown>,
 >({
 	storage,
 	handlers,
@@ -263,7 +263,7 @@ export function createQueue<
 				if (taskToProcess.background === false) {
 					await handlerFn(...taskToProcess.params);
 				} else {
-					handlerFn(...taskToProcess.params).catch((error) => {
+					Promise.resolve(handlerFn(...taskToProcess.params)).catch((error) => {
 						console.error(
 							`Background task "${taskToProcess.handler}" failed:`,
 							error,
