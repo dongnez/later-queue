@@ -263,12 +263,10 @@ export function createQueue<
 				if (taskToProcess.background === false) {
 					await handlerFn(...taskToProcess.params);
 				} else {
-					Promise.resolve(handlerFn(...taskToProcess.params)).catch((error) => {
-						console.error(
-							`Background task "${taskToProcess.handler}" failed:`,
-							error,
-						);
-					});
+					const beforeProcess: QueuedTask = { ...taskToProcess };
+					Promise.resolve(handlerFn(...taskToProcess.params)).catch((error) =>
+						retryCatch(beforeProcess, error),
+					);
 				}
 
 				const updatedQueue = queue.filter((t) => t.id !== taskToProcess.id);
@@ -305,6 +303,26 @@ export function createQueue<
 		} catch (error) {
 			// This catch usually happens to unexpected errors or storage implementation issues
 			console.error("Error processing queue:", error);
+		}
+	}
+
+	async function retryCatch(task: QueuedTask, error: unknown) {
+		console.error(`Background task "${task.handler}" failed:`, error);
+
+		// Save the task back to the queue if it can be retried
+		if (
+			task.retries === INFINITE_RETRIES ||
+			(task.retries && task.retries > 0)
+		) {
+			const currentQueue = await getQueue();
+			currentQueue.push({
+				...task,
+				retries:
+					task.retries === INFINITE_RETRIES
+						? INFINITE_RETRIES
+						: task.retries - 1,
+			});
+			await saveQueue({ queue: currentQueue, immediate: true });
 		}
 	}
 
