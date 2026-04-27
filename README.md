@@ -1,16 +1,8 @@
 # later-queue
 
-Lightweight client-side task queue with offline-first support — persist, retry and replay async tasks.
+A lightweight, offline-first task queue for JavaScript and TypeScript.
 
-Queue a task now, run it later. When the connection drops, tasks stay in storage and get replayed automatically when you're back online.
-
----
-
-## Why
-
-Most apps silently fail when the user goes offline. `later-queue` gives you a simple way to queue any async task — API calls, syncs, analytics — and process them when ready.
-
-No Redux. No heavy dependencies. Works in React, React Native, or anywhere with async storage.
+Queue async tasks now, run them later. When the connection drops, tasks persist in storage and replay automatically when you're back online. Works in plain JS, React, React Native, or any environment with async storage. No framework dependencies, no Redux, no bloat.
 
 ---
 
@@ -26,13 +18,11 @@ bun add later-queue
 
 ## Quick Start
 
-The simplest possible setup — register your handlers, add tasks, process when ready.
-
 ```ts
-import { createQueue } from "later-queue";
+import { createQueue, localStorageAdapter } from "later-queue";
 
 const queue = createQueue({
-  storage: localStorage, // any storage that implements get/set/remove
+  storage: localStorageAdapter,
   handlers: {
     sendMessage: async (text: string) => {
       await api.sendMessage(text);
@@ -50,59 +40,64 @@ await queue.add({
 });
 
 // Process the queue (e.g. on reconnect)
-await queue.process();
+window.addEventListener("online", () => queue.process());
 ```
 
 Tasks are persisted to storage immediately. If the app closes before `process()` runs, they'll still be there next time.
 
 ---
 
-## With an API module
+## Type-safe API handlers
 
-A common pattern is to spread your existing API object directly as handlers. No wrapper needed.
+Spread your existing API modules as handlers — handler names and params are both autocompleted:
 
 ```ts
-import { createQueue } from "later-queue";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { streaksApi } from "@/api/streaks";
-import { exercisesApi } from "@/api/exercises";
-import { isWifiConnected } from "@/utils/network";
+import { createQueue, localStorageAdapter } from "later-queue";
+import { usersApi } from "@/api/users";
+import { todosApi } from "@/api/todos";
 
 export const offlineQueue = createQueue({
-  storage: AsyncStorage,
-  storageKey: "@offlineQueue",
-  shouldProcess: isWifiConnected,
+  storage: localStorageAdapter,
   handlers: {
-    ...streaksApi,
-    ...exercisesApi,
+    ...usersApi,
+    ...todosApi,
   },
 });
 ```
 
-Then add tasks anywhere in your app with full type safety — handler names and params are both autocompleted:
-
 ```ts
-// ✅ handler name autocompletes to all keys of streaksApi + exercisesApi
+// ✅ handler name autocompletes to all keys of usersApi + todosApi
 // ✅ params are typed based on the exact function signature
 await offlineQueue.add({
-  handler: "updateStreakApi",
-  params: [streak],
-});
-
-await offlineQueue.add({
-  handler: "filterStreaksByMonthApi",
-  params: [2026, 4],
+  handler: "updateUserApi",
+  params: [user],
 });
 ```
 
-Call `process()` when the connection is restored:
+---
+
+## React Native
+
+```ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { createQueue, createAsyncStorageAdapter } from "later-queue";
+
+const asyncStorageAdapter = createAsyncStorageAdapter(AsyncStorage);
+
+const queue = createQueue({
+  storage: asyncStorageAdapter,
+  handlers: { ...usersApi, ...todosApi },
+});
+```
+
+Connect to network events:
 
 ```ts
 import NetInfo from "@react-native-community/netinfo";
 
 NetInfo.addEventListener((state) => {
   if (state.isConnected) {
-    offlineQueue.process();
+    queue.process();
   }
 });
 ```
@@ -115,13 +110,13 @@ Keys let you filter which tasks to process — similar to TanStack Query's query
 
 ```ts
 // Tag tasks when adding
-await offlineQueue.add({
-  handler: "updateStreakApi",
-  params: [streak],
-  key: ["streak", "offline"],
+await queue.add({
+  handler: "updateUserApi",
+  params: [user],
+  key: ["user", "offline"],
 });
 
-await offlineQueue.add({
+await queue.add({
   handler: "syncSettings",
   params: [settings],
   key: ["settings"],
@@ -129,39 +124,39 @@ await offlineQueue.add({
 ```
 
 ```ts
-// Only process streak tasks
-await offlineQueue.process({ key: ["streak"] });
+// Only process user tasks
+await queue.process({ key: ["user"] });
 
 // Only process offline-tagged tasks
-await offlineQueue.process({ key: ["offline"] });
+await queue.process({ key: ["offline"] });
 
 // Process everything
-await offlineQueue.process();
+await queue.process();
 ```
 
 Cancel tasks by key:
 
 ```ts
-await offlineQueue.cancel(["streak"]);
+await queue.cancel(["user"]);
 ```
 
 ---
 
 ## Retries
 
-By default, a task that fails is removed from the queue. You can change that:
+By default, a task that fails is removed from the queue. Add retries to keep trying:
 
 ```ts
-await offlineQueue.add({
-  handler: "updateStreakApi",
-  params: [streak],
+await queue.add({
+  handler: "updateUserApi",
+  params: [user],
   retries: 3,       // retry up to 3 times on failure
 });
 
-await offlineQueue.add({
+await queue.add({
   handler: "criticalSync",
   params: [data],
-  retries: Infinity, // never give up
+  retries: Infinity, // never give up — task stays in queue until it succeeds
 });
 ```
 
@@ -171,54 +166,40 @@ Failed tasks with remaining retries are moved to the end of the queue so they do
 
 ## Background tasks
 
-By default tasks run in the background — the queue moves on without waiting for them to finish. Set `background: false` to block until the task completes before processing the next one.
+Tasks run in the background by default — the queue moves on without waiting for them to finish. Set `background: false` to block until the task completes before processing the next one.
 
 ```ts
-await offlineQueue.add({
+await queue.add({
   handler: "criticalTask",
   params: [data],
   background: false, // wait for this one before moving on
 });
 ```
 
+> **Note:** Since tasks are processed sequentially, a `background: false` task will hold up the entire queue until it resolves. Use it only when the next tasks depend on the result of this one.
+
 ---
 
-## API
+## Storage Adapters
 
-### `createQueue(options)`
+Built-in adapters included:
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `storage` | `QueueStorage` | required | Storage adapter |
-| `handlers` | `Record<string, fn>` | required | Map of handler functions |
-| `storageKey` | `string` | `"@laterQueue"` | Key used in storage |
-| `debounceMs` | `number` | `200` | Debounce delay for saves |
-| `shouldProcess` | `() => Promise<boolean>` | `async () => true` | Connectivity check |
-
-### `queue.add(options)`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `handler` | `string` | required | Handler name |
-| `params` | `array` | required | Arguments passed to handler |
-| `key` | `string[]` | `[]` | Keys for filtering |
-| `retries` | `number \| Infinity` | `0` | Retry attempts on failure |
-| `background` | `boolean` | `true` | Fire and forget vs blocking |
-
-### Other methods
+- **`localStorageAdapter`** — for web (uses `localStorage` under the hood)
+- **`createAsyncStorageAdapter(storage)`** — wraps any AsyncStorage-compatible storage (React Native, etc.)
 
 ```ts
-queue.process(options?)   // process the queue, optional key filter
-queue.cancel(keys)        // remove tasks matching keys
-queue.clear()             // remove all tasks
-queue.getAll()            // return all queued tasks
+import { localStorageAdapter, createAsyncStorageAdapter } from "later-queue";
+
+// Web
+const queue = createQueue({ storage: localStorageAdapter, ... });
+
+// React Native
+import AsyncStorage from "@react-native-async-storage/async-storage";
+const asyncStorageAdapter = createAsyncStorageAdapter(AsyncStorage);
+const queue = createQueue({ storage: asyncStorageAdapter, ... });
 ```
 
----
-
-## Custom storage adapter
-
-Any object that implements this interface works:
+Need a custom adapter? Implement the `QueueStorage` interface:
 
 ```ts
 interface QueueStorage {
@@ -228,7 +209,39 @@ interface QueueStorage {
 }
 ```
 
-Works with `AsyncStorage`, `localStorage`, `IndexedDB`, `MMKV`, or anything custom.
+Works with `IndexedDB`, `MMKV`, or any custom backend.
+
+---
+
+## API
+
+### `createQueue(options)`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `storage` | `QueueStorage` | required | Storage adapter for persisting the queue |
+| `handlers` | `Record<string, fn>` | required | Map of handler functions |
+| `storageKey` | `string` | `"@laterQueue"` | Key used in storage |
+| `debounceMs` | `number` | `200` | Debounce delay for batched saves |
+
+### `queue.add(options)`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `handler` | `string` | required | Handler name (must match a registered handler) |
+| `params` | `array` | required | Arguments passed to handler |
+| `key` | `string[]` | `undefined` | Keys for filtering (like TanStack Query) |
+| `retries` | `number \| Infinity` | `undefined` | Retry attempts on failure |
+| `background` | `boolean` | `undefined` (behaves as `true`) | `true` = fire and forget, `false` = block queue |
+
+### Other methods
+
+```ts
+queue.process(options?)   // process the queue, optional key filter
+queue.cancel(keys)        // remove tasks matching keys
+queue.clear()             // remove all tasks
+queue.getAll()            // return all queued tasks
+```
 
 ---
 
