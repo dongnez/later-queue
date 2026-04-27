@@ -1,0 +1,10 @@
+pre-commit:
+  parallel: false
+  commands:
+    format:
+      glob: "*.{ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc,css,scss,saas,html}"
+      run: bunx biome format --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+    check:
+      run: bunx biome check --write --unsafe --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
