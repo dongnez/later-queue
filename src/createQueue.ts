@@ -38,6 +38,10 @@ export interface QueuedTask {
 	key?: string[];
 	retries?: number;
 	background?: boolean;
+	onSuccess?: {
+		handler: string;
+		params: unknown[];
+	};
 }
 
 /**
@@ -67,8 +71,8 @@ type HandlerParams<
 export interface Queue<
 	THandlers extends Record<string, (...args: any[]) => unknown>,
 > {
-	add: <H extends keyof THandlers & string>(
-		props: AddTaskOptions<THandlers, H>,
+	add: <H extends keyof THandlers & string, S extends keyof THandlers & string>(
+		props: AddTaskOptions<THandlers, H, S>,
 	) => Promise<void>;
 	process: (options?: ProcessQueueOptions) => Promise<void>;
 	cancel: (keys: string[]) => Promise<void>;
@@ -91,12 +95,17 @@ export interface Queue<
 export interface AddTaskOptions<
 	THandlers extends Record<string, (...args: any[]) => unknown>,
 	H extends keyof THandlers & string,
+	S extends keyof THandlers & string,
 > {
 	handler: H;
 	params: HandlerParams<THandlers, H>;
 	key?: string[];
 	retries?: number;
 	background?: boolean;
+	onSuccess?: {
+		handler: S;
+		params: HandlerParams<THandlers, S>;
+	};
 }
 
 const INFINITE_RETRIES = -1;
@@ -171,13 +180,17 @@ export function createQueue<
 	 * @param props.retries - Retry count on failure. Infinity for unlimited retries.
 	 * @param props.background - If true (default), non-blocking; if false, awaits completion.
 	 */
-	async function add<H extends keyof THandlers & string>({
+	async function add<
+		H extends keyof THandlers & string,
+		S extends keyof THandlers & string,
+	>({
 		handler,
 		params,
 		key,
 		retries,
 		background,
-	}: AddTaskOptions<THandlers, H>): Promise<void> {
+		onSuccess,
+	}: AddTaskOptions<THandlers, H, S>): Promise<void> {
 		try {
 			if (!handlers[handler]) {
 				throw new Error(`Handler "${handler}" is not registered.`);
@@ -193,6 +206,7 @@ export function createQueue<
 				key,
 				retries: retries === Infinity ? INFINITE_RETRIES : retries,
 				background: background,
+				onSuccess: onSuccess ?? undefined,
 			};
 			queue.push(newTask);
 			await saveQueue({ queue });
@@ -262,11 +276,12 @@ export function createQueue<
 				// Execute task function (synchronously or asynchronously)
 				if (taskToProcess.background === false) {
 					await handlerFn(...taskToProcess.params);
+					runOnSuccess(taskToProcess);
 				} else {
 					const beforeProcess: QueuedTask = { ...taskToProcess };
-					Promise.resolve(handlerFn(...taskToProcess.params)).catch((error) =>
-						retryCatch(beforeProcess, error),
-					);
+					Promise.resolve(handlerFn(...taskToProcess.params))
+						.then(() => runOnSuccess(taskToProcess))
+						.catch((error) => retryCatch(beforeProcess, error));
 				}
 
 				const updatedQueue = queue.filter((t) => t.id !== taskToProcess.id);
@@ -303,6 +318,21 @@ export function createQueue<
 		} catch (error) {
 			// This catch usually happens to unexpected errors or storage implementation issues
 			console.error("Error processing queue:", error);
+		}
+	}
+
+	async function runOnSuccess(task: QueuedTask): Promise<void> {
+		if (!task.onSuccess) return;
+		const { handler, params = [] } = task.onSuccess;
+		const fn = handlers[handler];
+		if (!fn) {
+			console.warn(`onSuccess handler "${handler}" is not registered.`);
+			return;
+		}
+		try {
+			await fn(...params);
+		} catch (error) {
+			console.error(`onSuccess handler "${handler}" failed:`, error);
 		}
 	}
 
