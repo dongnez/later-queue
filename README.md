@@ -180,6 +180,27 @@ await queue.add({
 
 ---
 
+## onSuccess callback
+
+Run another handler automatically after a task completes successfully. This is useful for side effects like cache invalidation:
+
+```ts
+await offlineQueue.add({
+  handler: "updateUserApi",
+  params: [user],
+  onSuccess: {
+    handler: "invalidateQuery",
+    params: [userApi.updateUser(user.id).queryKey],
+  },
+});
+```
+
+The `onSuccess` handler and params are fully type-safe — they must match one of your registered handlers, just like the main `handler` field.
+
+> **Note:** If the `onSuccess` handler fails, the error is logged but the original task is still considered successful and removed from the queue.
+
+---
+
 ## Storage Adapters
 
 Built-in adapters included:
@@ -233,6 +254,7 @@ Works with `IndexedDB`, `MMKV`, or any custom backend.
 | `key` | `string[]` | `undefined` | Keys for filtering (like TanStack Query) |
 | `retries` | `number \| Infinity` | `undefined` | Retry attempts on failure |
 | `background` | `boolean` | `undefined` (behaves as `true`) | `true` = fire and forget, `false` = block queue |
+| `onSuccess` | `{ handler: string, params: array }` | `undefined` | Run another handler after this task succeeds |
 
 ### Other methods
 
