@@ -1,6 +1,6 @@
 {
 	"name": "later-queue",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Offline-first client-side task queue — persist, retry, and replay async tasks",
 	"main": "dist/index.cjs",
 	"module": "dist/index.js",
@@ -18,7 +18,8 @@
 		"lint": "biome lint ./src",
 		"format": "biome format ./src --write",
 		"check": "biome check ./src",
-		"prepublishOnly": "bun run check && bun run build"
+		"prepublishOnly": "bun run check && bun run build",
+		"publishVersion": "bun run bump.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.13",
