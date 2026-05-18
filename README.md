@@ -201,6 +201,20 @@ The `onSuccess` handler and params are fully type-safe — they must match one o
 
 ---
 
+## Immediate save
+
+By default, `add()` saves to storage with a debounce (`debounceMs`, default 200ms) — useful when adding multiple tasks rapidly. But sometimes you need to guarantee the task is persisted before the promise resolves (e.g. before navigating away or closing the app):
+
+```ts
+await offlineQueue.add({
+  handler: "updateUserApi",
+  params: [user],
+  immediate: true, // bypasses debounce, saves right now
+});
+```
+
+---
+
 ## Storage Adapters
 
 Built-in adapters included:
@@ -254,6 +268,7 @@ Works with `IndexedDB`, `MMKV`, or any custom backend.
 | `key` | `string[]` | `undefined` | Keys for filtering (like TanStack Query) |
 | `retries` | `number \| Infinity` | `undefined` | Retry attempts on failure |
 | `background` | `boolean` | `undefined` (behaves as `true`) | `true` = fire and forget, `false` = block queue |
+| `immediate` | `boolean` | `undefined` (debounced) | `true` = save to storage immediately, bypassing debounce |
 | `onSuccess` | `{ handler: string, params: array }` | `undefined` | Run another handler after this task succeeds |
 
 ### Other methods

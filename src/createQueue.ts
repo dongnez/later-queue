@@ -102,6 +102,7 @@ export interface AddTaskOptions<
 	key?: string[];
 	retries?: number;
 	background?: boolean;
+	immediate?: boolean;
 	onSuccess?: {
 		handler: S;
 		params: HandlerParams<THandlers, S>;
@@ -189,6 +190,7 @@ export function createQueue<
 		key,
 		retries,
 		background,
+		immediate,
 		onSuccess,
 	}: AddTaskOptions<THandlers, H, S>): Promise<void> {
 		try {
@@ -209,7 +211,7 @@ export function createQueue<
 				onSuccess: onSuccess ?? undefined,
 			};
 			queue.push(newTask);
-			await saveQueue({ queue });
+			await saveQueue({ queue, immediate });
 		} catch (error) {
 			console.error("Error adding to queue:", error);
 		}
